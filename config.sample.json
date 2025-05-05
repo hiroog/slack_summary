@@ -1,0 +1,11 @@
+{
+    "token":"＜SLACK_API_TOKEN＞",
+    "recent_days": 1,
+    "specified_days": 30,
+    "target_channels":[
+        "general", "random"
+    ],
+    "system_prompt": "以下はslackの一連のスレッドを取り出したものです。要約してください。",
+    "ollama_host": "http://127.0.0.1:11434",
+    "model_name": "gemma3:12b"
+}
