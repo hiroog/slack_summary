@@ -4,37 +4,115 @@ import os
 import sys
 import datetime
 import time
+import json
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
+#-------------------------------------------------------------------------------
+
+def save_json(file_name, message_obj):
+    # バックアップファイルを作成
+    if os.path.exists(file_name):
+        file_name_bak= file_name+'.bak'
+        if os.path.exists(file_name_bak):
+            os.remove(file_name_bak)
+        os.rename(file_name,file_name_bak)
+    # JSONファイルを保存
+    with open(file_name, 'w', encoding='utf-8') as fo:
+        fo.write(json.dumps(message_obj, indent=4, ensure_ascii=False))
+
+def load_json(file_name):
+    if os.path.exists(file_name):
+        with open(file_name, 'r', encoding='utf-8') as fi:
+            return  json.loads(fi.read())
+    return  None
+
+#-------------------------------------------------------------------------------
+
+class ThreadInfo:
+    def __init__(self):
+        pass
+
+#-------------------------------------------------------------------------------
 
 class SlackMessageChecker:
-    DATEFORMAT='%Y-%m-%d %H:%M:%S'
+    DATEFORMAT = '%Y-%m-%d %H:%M:%S'
+    CACHE_FILE = 'cache.json'
+
     def __init__(self, token):
         self.client = WebClient(token=token)
         self.user_map= {}
+        self.channel_map= {}
+        self.cache_updated= False
+        self.load_cache()
+
+    def load_cache(self):
+        cache= load_json(self.CACHE_FILE)
+        if cache:
+            self.user_map= cache.get('user', {})
+            self.channel_map= cache.get('channel', {})
+
+    def save_cache(self):
+        if self.cache_updated:
+            save_json(self.CACHE_FILE, {'user':self.user_map, 'channel':self.channel_map})
+            self.cache_updated= False
+
+    def get_all_channels(self):
+        # チャンネル一覧を取得
+        all_channels = []
+        cursor = None
+        while True:
+            result = self.client.conversations_list(cursor=cursor, limit=800, types="public_channel")
+            time.sleep( 1.0 )
+            channels= result.get("channels", [])
+            all_channels.extend( channels )
+            cursor= result.get('response_metadata', {}).get('next_cursor', None)
+            if cursor is None or cursor == '' or channels == []:
+                break
+        return  channels
+
+    def get_channel_info(self, channel_name):
+        # キャッシュからチャンネル情報を取得
+        if channel_name in self.channel_map:
+            return  self.channel_map[channel_name]
+        # チャンネル情報を取得
+        try:
+            channels = self.get_all_channels()
+            for channel in channels:
+                channel_id= channel['id']
+                name= channel['name']
+                self.channel_map[name]= name,channel_id
+            self.cache_updated= True
+        except SlackApiError as e:
+            print(f"Error fetching messages: {e.response['error']}")
+            return  None
+        if channel_name in self.channel_map:
+            return  self.channel_map[channel_name]
+        return  None
+
+    def get_date_string(self, ts):
+        if type(ts) is not float:
+            ts= float(ts)
+        if ts <= 0:
+            return  ''
+        date = datetime.datetime.fromtimestamp(ts)
+        return  date.strftime(self.DATEFORMAT)
 
     def get_recent_messages(self, recent_days, specified_days, target_channels):
         if target_channels is None or target_channels == []:
             return []
 
         # 計算: 指定日と更新判定期間
+        today_date = datetime.datetime.now()
         specified_date = datetime.datetime.now() - datetime.timedelta(days=specified_days)
         recent_date = datetime.datetime.now() - datetime.timedelta(days=recent_days)
+        date_info= (today_date.strftime(self.DATEFORMAT), specified_date.strftime(self.DATEFORMAT), recent_date.strftime(self.DATEFORMAT))
 
         try:
-            # チャンネル一覧を取得
-            channels = self.client.conversations_list(types="public_channel").get("channels", [])
-
-            # 指定されたチャンネルのみをフィルタリング
-            if target_channels:
-                channels = [channel for channel in channels if channel["name"] in target_channels]
-            
             result = []
 
-            for channel in channels:
-                channel_id = channel["id"]
-                channel_name = channel["name"]
+            for channel_name in target_channels:
+                _,channel_id= self.get_channel_info(channel_name)
                 print( '* channel=[%s] (%s)' % (channel_name, channel_id) )
 
                 # チャンネル内のメッセージ履歴を取得
@@ -75,12 +153,11 @@ class SlackMessageChecker:
                                 # スレッドのリプライを確認
                                 replies = self.client.conversations_replies(channel=channel_id, ts=message["ts"]).get("messages", [])
                                 time.sleep( 1.0 )
-                                #print( '   replies=', len(replies) )
-                                result.append({"channel": (channel_name, channel_id), "messages": replies, 'date':latest_reply_date.strftime(self.DATEFORMAT)})
+                                result.append({"channel": (channel_name, channel_id), "messages": replies, "date":date_info})
                                 appended= True
                     else:
                         if message_date >= recent_date:
-                            result.append({"channel": (channel_name, channel_id), "messages": [message], 'date':message_date.strftime(self.DATEFORMAT)})
+                            result.append({"channel": (channel_name, channel_id), "messages": [message], "date":date_info})
                             appended= True
 
                     message_num+= 1
@@ -93,8 +170,15 @@ class SlackMessageChecker:
         except SlackApiError as e:
             print(f"Error fetching messages: {e.response['error']}")
             return []
+        finally:
+            self.save_cache()
 
-    def get_user_name(self, user_id):
+    def get_user_info(self, user_id):
+        '''ユーザー情報を取得する関数
+        user_id: ユーザーID
+        return: ユーザー情報
+        '''
+        # キャッシュからユーザー情報を取得
         if user_id in self.user_map:
             return  self.user_map[user_id]
         try:
@@ -102,26 +186,93 @@ class SlackMessageChecker:
             time.sleep( 0.5 )
             user= response.get('user',{})
             user_name= user.get('name', 'Unknown')
-            real_name= user.get('real_name', user_name)
-            display_name= user.get('profile',{}).get('display_name', real_name)
-            name_text= '%s (%s)' % (display_name,user_name)
-            self.user_map[user_id]= name_text
-            return  name_text
+            real_name= user.get('real_name', '')
+            display_name= user.get('profile',{}).get('display_name', '')
+            if real_name == '':
+                real_name= user_name
+            if display_name == '':
+                display_name= user_name
+            user_info= {'user':user_name, 'display':display_name, 'real':real_name}
+            self.user_map[user_id]= user_info
+            self.cache_updated= True
+            return  user_info
         except SlackApiError as e:
             print(f"Error fetching messages: {e.response['error']}")
-            return 'Unknown'
+            return {'name':'Unknown', 'display':'Unknown', 'real':'Unknown'}
+
+    def userinfo_to_string(self, user_info):
+        return '%s (%s)' % (user_info['real'],user_info['display'])
 
     def message_to_text(self, message):
-        user= self.get_user_name( message.get('user', 'Unknown') )
+        user_name = self.userinfo_to_string( self.get_user_info( message.get('user', 'Unknown') ) )
         text= message.get('text', '')
-        ts= datetime.datetime.fromtimestamp(float(message.get('ts', '0'))).strftime(self.DATEFORMAT)
-        return  '%s  %s\n%s\n' % (user,ts,text)
+        date_str= self.get_date_string(message.get('ts', '0'))
+        return  '%s  %s\n%s\n' % (user_name,date_str,text)
 
-    def threads_to_text(self, messages):
+    def thread_to_text(self, messages):
         replies_list= []
         for message in messages:
             replies_list.append(self.message_to_text(message))
         return  '\n'.join(replies_list)
+
+    def get_message_info(self, channel_info, date_info, messages):
+        '''スレッド情報を取得する関数
+        channel_info: チャンネルID
+        messages: メッセージリスト
+        return: スレッド情報
+        '''
+        # スレッド情報を取得
+        info= ThreadInfo()
+        info.channel_name, info.channel_id= channel_info
+        info.date_info= date_info
+        info.thread_text= self.thread_to_text(messages)
+        first_message= messages[0]
+
+        # スレッドのURLを取得
+        thread_ts= first_message.get('thread_ts', None)
+        if thread_ts is None:
+            thread_ts= first_message.get('ts', None)
+        response= self.client.chat_getPermalink(channel=info.channel_id, message_ts=thread_ts)
+        info.thread_url= response.get('permalink','')
+
+		# ポストしたユーザーの情報を取得
+        info.post_user_info= self.get_user_info(first_message['user'])
+        info.post_user_name= self.userinfo_to_string(info.post_user_info)
+        info.post_date= self.get_date_string(first_message.get('ts', '0'))
+
+		# リプライしたユーザーの情報を取得
+        info.reply_date= self.get_date_string(first_message.get('latest_reply', '0'))
+        info.reply_user_info= None
+        info.reply_user_name= None
+        reply_user_list= []
+        for user_id in first_message.get('reply_users', []):
+            info.reply_user_info= self.get_user_info(user_id)
+            info.reply_user_name= self.userinfo_to_string(info.reply_user_info)
+            reply_user_list.append(info.reply_user_name)
+        info.reply_users_text= ' '.join(reply_user_list)
+        info.reply_users= len(reply_user_list)
+        info.reply_count= first_message.get('reply_count', 0)
+
+        self.save_cache()
+        return  info
+
+    def post_message(self, channel_name, text, parent_response=None):
+        # メッセージを送信
+        try:
+            thread_ts= None
+            if parent_response:
+                thread_ts= parent_response.get('ts', None)
+            _,channel_id= self.get_channel_info(channel_name)
+            response = self.client.chat_postMessage(
+                channel=channel_id,
+                text=text,
+                thread_ts=thread_ts
+            )
+            time.sleep( 1.0 )
+            return response
+        except SlackApiError as e:
+            print(f"Error sending message: {e.response['error']}")
+            return None
 
     def dump_messages(self, messages):
         for item in messages:
@@ -130,6 +281,7 @@ class SlackMessageChecker:
             print( '-------- # %s (%s)--------' % (channel_name,channel_id) )
             print( threads_text )
 
+#-------------------------------------------------------------------------------
 
 def usage():
     print("Usage: python SlackMessageChecker.py")

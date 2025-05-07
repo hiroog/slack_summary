@@ -5,7 +5,9 @@
     "target_channels":[
         "general", "random"
     ],
-    "system_prompt": "以下はslackの一連のスレッドを取り出したものです。要約してください。",
-    "ollama_host": "http://127.0.0.1:11434",
+    "output_markdown": "output.md",
+    "system_prompt": "以下はslackの一連のスレッドを取り出したものです。最初の投稿を数行でまとめて、そのあとスレッド全体を要約してください。",
+    "provider": "ollama",
+    "ollama_host": "http://localhost:11434",
     "model_name": "gemma3:12b"
 }
