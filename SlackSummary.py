@@ -155,7 +155,7 @@ class SlackSummary:
             if thread_info.reply_count > 0:
                 text+=  ('🔴*#%s 最終更新 %s %s*\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
             else:
-                text+=  ('*#%s 投稿者 %s %s*\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
+                text+=  ('🔵*#%s 投稿者 %s %s*\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
             text+=  ('%s\n' % thread_info.thread_url)
 
             text+=  ('* チャンネル: #%s (%s)\n' % (thread_info.channel_name, thread_info.channel_id) )
