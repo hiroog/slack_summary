@@ -8,7 +8,7 @@ import json
 script_dir= os.path.dirname(__file__)
 if script_dir not in sys.path:
     sys.path.append( script_dir )
-import OllamaAPI
+import OllamaAPI2
 import SlackMessageChecker
 
 #------------------------------------------------------------------------------
@@ -21,6 +21,7 @@ import SlackMessageChecker
 #   "specified_days": 30,
 #   "target_channels": [ "general", "random" ],
 #   "system_prompt": "要約して",
+#   "Header_prompt": "数行にまとめて",
 #   "provider": "ollama",
 #   "ollama_host": "http://localhost:11434",
 #   "model_name": "gemma3:12b",
@@ -42,10 +43,11 @@ class SlackSummary:
         self.specified_days= config.get('specified_days', 7)
         self.target_channels= config.get('target_channels', [])
         self.system_prompt= config.get('system_prompt', '')
+        self.header_prompt= config.get('header_prompt', '')
         self.output_channel= config.get('output_channel', None)
         self.output_markdown= config.get('output_markdown', 'output.md')
-        options= OllamaAPI.OllamaOptions(model_name=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
-        self.ollama_api = OllamaAPI.OllamaAPI(options)
+        options= OllamaAPI2.OllamaOptions(model_name=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
+        self.ollama_api = OllamaAPI2.OllamaAPI(options)
 
     def load_config(self, config_file):
         # 設定ファイルを読み込む
@@ -77,7 +79,12 @@ class SlackSummary:
             if status_code != 200:
                 print(f"Error generating summary: {status_code}")
                 return  None
+            header,status_code = self.ollama_api.generate(self.header_prompt + '\n' + thread_info.header_text)
+            if status_code != 200:
+                print(f"Error generating summary: {status_code}")
+                return  None
             thread_info.summary= summary
+            thread_info.header= header
             summary_list.append(thread_info)
         return  summary_list
 
@@ -113,29 +120,72 @@ class SlackSummary:
                 fo.write('* 更新スレッドなし\n')
             for thread_info in summary_list:
                 if thread_info.reply_count > 0:
-                    fo.write('## #%s 最終更新 %s %s\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
+                    fo.write('## #%s  最終更新 %s %s\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
                 else:
-                    fo.write('## #%s 投稿者 %s %s\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
+                    fo.write('## #%s  投稿者 %s %s\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
+                fo.write('\n')
+                fo.write('%s\n' % thread_info.header)
+                fo.write('\n')
                 fo.write('%s\n' % thread_info.thread_url)
 
-                fo.write('|            |          |\n')
-                fo.write('|:---------- |:-------- |\n')
-                fo.write('| チャンネル | #%s (%s) |\n' % (thread_info.channel_name, thread_info.channel_id) )
-                fo.write('| 投稿者     | %s       |\n' % thread_info.post_user_name)
-                fo.write('| 投稿日時   | %s       |\n' % thread_info.post_date)
                 if thread_info.reply_count > 0:
-                    fo.write('| リプライ数         | %d |\n' % thread_info.reply_count)
-                    fo.write('| 参加者             | %s |\n' % thread_info.reply_users_text)
-                    fo.write('| 最終リプライ投稿者 | %s |\n' % thread_info.reply_user_name)
-                    fo.write('| 最終リプライ日時   | %s |\n' % thread_info.reply_date)
+                    fo.write('\n')
+                    fo.write('### 要約\n')
+                    fo.write(thread_info.summary)
                     fo.write('\n')
                 else:
                     fo.write('* リプライなし\n')
+                    fo.write('\n')
 
-                fo.write('### 要約\n')
-                fo.write(thread_info.summary)
+                fo.write(    '|                    |          |\n')
+                fo.write(    '|:------------------ |:-------- |\n')
+                fo.write(    '| チャンネル         | #%s (%s) |\n' % (thread_info.channel_name, thread_info.channel_id) )
+                fo.write(    '| 投稿者             | %s       |\n' % thread_info.post_user_name)
+                fo.write(    '| 投稿日時           | %s       |\n' % thread_info.post_date)
+                if thread_info.reply_count > 0:
+                    fo.write('| リプライ数         | %d       |\n' % thread_info.reply_count)
+                    fo.write('| 参加者             | %s       |\n' % thread_info.reply_users_text)
+                    fo.write('| 最終リプライ投稿者 | %s       |\n' % thread_info.reply_user_name)
+                    fo.write('| 最終リプライ日時   | %s       |\n' % thread_info.reply_date)
+
                 fo.write('\n\n')
             fo.write( '\n' )
+        #with open(output_file, 'r', encoding='utf-8') as fo:
+        #    text= fo.read()
+        #response= self.slack_checker.post_message('apptest', text=None, blocks=None, markdown_text= text)
+
+    def get_slack_text(self, thread_info ):
+        text= ''
+        if thread_info.reply_count > 0:
+            text+=  ('🔴 *#%s  最終更新 %s %s*\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
+        else:
+            text+=  ('🔵 *#%s  投稿者 %s %s*\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
+        text+=  ('\n')
+        for line in thread_info.header.split('\n'):
+            text+=  ('>%s\n' % line)
+        text+=  ('\n')
+        text+=  ('%s\n' % thread_info.thread_url)
+        if thread_info.reply_count > 0:
+            text+=  ('\n')
+            text+=  ('*要約*\n\n')
+            text+=  (thread_info.summary)
+            text+=  ('\n')
+        else:
+            text+=  ('* リプライなし\n')
+
+        text+=  ('\n')
+        text+=  ('*情報*\n\n')
+        text+=  ('* チャンネル: #%s (%s)\n' % (thread_info.channel_name, thread_info.channel_id) )
+        text+=  ('* 投稿者: %s\n' % thread_info.post_user_name)
+        text+=  ('* 投稿日時: %s\n' % thread_info.post_date)
+        if thread_info.reply_count > 0:
+            text+=  ('* リプライ数: %d\n' % thread_info.reply_count)
+            text+=  ('* 参加者: %s\n' % thread_info.reply_users_text)
+            text+=  ('* 最終リプライ投稿者: %s\n' % thread_info.reply_user_name)
+            text+=  ('* 最終リプライ日時: %s\n' % thread_info.reply_date)
+
+        text+=  ('\n　\n')
+        return text
 
     def output_slack(self, slack_channel, summary_list):
         text= ''
@@ -149,31 +199,112 @@ class SlackSummary:
         else:
             text+= ('*SlackSummary*\n')
             text+= ('* 更新スレッドなし\n')
-        response= self.slack_checker.post_message('apptest', text)
+        response= self.slack_checker.post_message(slack_channel, text)
+
         for thread_info in summary_list:
-            text= ''
             if thread_info.reply_count > 0:
-                text+=  ('🔴*#%s 最終更新 %s %s*\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
+                header_text=  ('🔴 #%s  最終更新 %s %s\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
             else:
-                text+=  ('🔵*#%s 投稿者 %s %s*\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
-            text+=  ('%s\n' % thread_info.thread_url)
-
-            text+=  ('* チャンネル: #%s (%s)\n' % (thread_info.channel_name, thread_info.channel_id) )
-            text+=  ('* 投稿者: %s\n' % thread_info.post_user_name)
-            text+=  ('* 投稿日時: %s\n' % thread_info.post_date)
+                header_text=  ('🔵 #%s  投稿者 %s %s\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
+            blocks= [
+                {
+                    'type': 'header',
+                    'text': {
+                        'type': 'plain_text',
+                        'text': header_text,
+                        'emoji': True
+                    }
+                },
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': thread_info.header
+                    }
+                },
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': thread_info.thread_url
+                    }
+                },
+                {
+                    'type': 'divider'
+                },
+            ]
             if thread_info.reply_count > 0:
-                text+=  ('* リプライ数: %d\n' % thread_info.reply_count)
-                text+=  ('* 参加者: %s\n' % thread_info.reply_users_text)
-                text+=  ('* 最終リプライ投稿者: %s\n' % thread_info.reply_user_name)
-                text+=  ('* 最終リプライ日時: %s\n' % thread_info.reply_date)
-                text+=  ('\n')
-            else:
-                text+=  ('* リプライなし\n')
+                blocks.extend([
+                        {
+                            'type': 'section',
+                            'text': {
+                                'type': 'mrkdwn',
+                                'text': thread_info.summary
+                            }
+                        },
+                        {
+                            'type': 'divider'
+                        }
+                    ])
 
-            text+=  ('*要約*\n\n')
-            text+=  (thread_info.summary)
-            text+=  ('\n\n')
-            response= self.slack_checker.post_message(slack_channel, text, response)
+            blocks.append(
+                    {
+                        'type': 'section',
+                        'fields': [
+                            {
+                                'type': 'mrkdwn',
+                                'text': '*チャンネル:*  #%s (%s)' % (thread_info.channel_name, thread_info.channel_id)
+                            },
+                            {
+                                'type': 'mrkdwn',
+                                'text': '*投稿者:*  %s' % thread_info.post_user_name
+                            },
+                            {
+                                'type': 'mrkdwn',
+                                'text': '*投稿日:*  %s' % thread_info.post_date
+                            }
+                        ]
+                    }
+                )
+      
+            if thread_info.reply_count > 0:
+                blocks.append({
+                    'type': 'section',
+                    'fields': [
+                        {
+                            'type': 'mrkdwn',
+                            'text': '*リプライ数:*  %d' % thread_info.reply_count
+                        },
+                        {
+                            'type': 'mrkdwn',
+                            'text': '*参加者:*  %s' % thread_info.reply_users_text
+                        },
+                        {
+                            'type': 'mrkdwn',
+                            'text': '*最終リプライ投稿者:*  %s' % thread_info.reply_user_name
+                        },
+                        {
+                            'type': 'mrkdwn',
+                            'text': '*最終リプライ日時:*  %s' % thread_info.reply_date
+                        }
+                    ]
+                })
+            blocks.extend([
+                    {
+                        'type': 'section',
+                        'text': {
+                            'type': 'mrkdwn',
+                            'text': '　'
+                        },
+                    },
+                    {
+                        'type': 'divider'
+                    }
+                ])
+
+            text= self.get_slack_text(thread_info)
+            response= self.slack_checker.post_message(slack_channel, text=text, blocks=blocks, parent_response=response)
+
 
     def output_all(self, summary_list):
         # 全ての出力を行う
@@ -191,6 +322,8 @@ def usage():
 
 def main(argv):
     config_file= 'config.json'
+    save_messages= False
+    load_messages= False
     acount= len(argv)
     ai= 1
     while ai< acount:
@@ -199,15 +332,33 @@ def main(argv):
             if ai+1 < acount:
                 ai+= 1
                 config_file= argv[ai]
+        elif arg == '--save':
+            save_messages= True
+        elif arg == '--load':
+            load_messages= True
         else:
             usage()
         ai+= 1
 
     summary = SlackSummary(config_file)
-    messages = summary.get_recent_messages()
-    if messages is None:
-        return 1
-    summary_list= summary.summarize_messages(messages)
+    if load_messages:
+        object_list= SlackMessageChecker.load_json('summary.json')
+        summary_list= []
+        for object in object_list:
+            thread_info= SlackMessageChecker.ThreadInfo()
+            thread_info.__dict__.update(object)
+            summary_list.append(thread_info)
+    else:
+        messages = summary.get_recent_messages()
+        if messages is None:
+            return 1
+        summary_list= summary.summarize_messages(messages)
+        if save_messages:
+            object_list= []
+            for thread_info in summary_list:
+                object_list.append(thread_info.__dict__)
+            SlackMessageChecker.save_json('summary.json',object_list)
+
     summary.output_all(summary_list)
     return 0
 

@@ -221,11 +221,15 @@ class SlackMessageChecker:
         messages: メッセージリスト
         return: スレッド情報
         '''
-        # スレッド情報を取得
         info= ThreadInfo()
+
+        # チャンネル情報を格納
         info.channel_name, info.channel_id= channel_info
         info.date_info= date_info
+
+        # スレッド情報を取得
         info.thread_text= self.thread_to_text(messages)
+        info.header_text= self.message_to_text(messages[0])
         first_message= messages[0]
 
         # スレッドのURLを取得
@@ -256,7 +260,7 @@ class SlackMessageChecker:
         self.save_cache()
         return  info
 
-    def post_message(self, channel_name, text, parent_response=None):
+    def post_message(self, channel_name, text, blocks=None, markdown_text= None, parent_response=None):
         # メッセージを送信
         try:
             thread_ts= None
@@ -266,6 +270,8 @@ class SlackMessageChecker:
             response = self.client.chat_postMessage(
                 channel=channel_id,
                 text=text,
+                blocks=blocks,
+                markdown_text=markdown_text,
                 thread_ts=thread_ts
             )
             time.sleep( 1.0 )
