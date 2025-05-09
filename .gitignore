@@ -1,5 +1,7 @@
 config.json
+config_*.json
 cache*.json*
 output.*
 *.bak
 summary.*
+settings*.json

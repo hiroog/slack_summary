@@ -222,7 +222,7 @@ class SlackSummary:
                     'type': 'section',
                     'text': {
                         'type': 'mrkdwn',
-                        'text': '<%s|元スレッドのリンク>  #%s  (Rep:%d)' % (thread_info.thread_url, thread_info.channel_name, thread_info.reply_count)
+                        'text': '<%s|元スレッドのリンク(%d)>   #%s' % (thread_info.thread_url, thread_info.reply_count, thread_info.channel_name)
                     }
                 },
                 {
@@ -241,16 +241,6 @@ class SlackSummary:
                         'type': 'divider'
                     }
                 ])
-                if False:
-                    blocks.extend([
-                        {
-                            'type': 'section',
-                            'text': {
-                                    'type': 'mrkdwn',
-                                    'text': '*リプライ数:*  %d\n*参加者:*  %s\n' % (thread_info.reply_count, thread_info.reply_users_text)
-                            }
-                        }
-                    ])
 
             response= self.slack_checker.post_message(slack_channel, text='A\n', blocks=blocks, parent_response=response)
 
