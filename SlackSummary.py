@@ -45,7 +45,7 @@ class SlackSummary:
         self.system_prompt= config.get('system_prompt', '')
         self.header_prompt= config.get('header_prompt', '')
         self.output_channel= config.get('output_channel', None)
-        self.output_markdown= config.get('output_markdown', 'output.md')
+        self.output_markdown= config.get('output_markdown', None)
         self.output_mention= config.get('output_mention', '')
         options= OllamaAPI2.OllamaOptions(model_name=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
         self.ollama_api = OllamaAPI2.OllamaAPI(options)
@@ -222,11 +222,12 @@ class SlackSummary:
                     'type': 'section',
                     'text': {
                         'type': 'mrkdwn',
-                        'text': '<%s|元スレッドのリンク>  #%s' % (thread_info.thread_url, thread_info.channel_name)
+                        'text': '<%s|元スレッドのリンク>  #%s  (Rep:%d)' % (thread_info.thread_url, thread_info.channel_name, thread_info.reply_count)
                     }
                 },
                 {
                     'type': 'section',
+                    'expand': True,
                     'text': {
                         'type': 'mrkdwn',
                         'text': header_text
@@ -238,15 +239,18 @@ class SlackSummary:
                 blocks.extend([
                     {
                         'type': 'divider'
-                    },
-                    {
-                        'type': 'section',
-                        'text': {
-                                'type': 'mrkdwn',
-                                'text': '*リプライ数:*  %d\n*参加者:*  %s\n' % (thread_info.reply_count, thread_info.reply_users_text)
-                        }
                     }
                 ])
+                if False:
+                    blocks.extend([
+                        {
+                            'type': 'section',
+                            'text': {
+                                    'type': 'mrkdwn',
+                                    'text': '*リプライ数:*  %d\n*参加者:*  %s\n' % (thread_info.reply_count, thread_info.reply_users_text)
+                            }
+                        }
+                    ])
 
             response= self.slack_checker.post_message(slack_channel, text='A\n', blocks=blocks, parent_response=response)
 
