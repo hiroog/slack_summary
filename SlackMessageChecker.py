@@ -30,6 +30,7 @@ def load_json(file_name):
 #-------------------------------------------------------------------------------
 
 class ThreadInfo:
+    # スレッド情報を格納するクラス
     def __init__(self):
         pass
 
@@ -37,25 +38,29 @@ class ThreadInfo:
 
 class SlackMessageChecker:
     DATEFORMAT = '%Y-%m-%d %H:%M:%S'
-    CACHE_FILE = 'cache.json'
 
-    def __init__(self, token):
+    def __init__(self, token, cache=None):
         self.client = WebClient(token=token)
         self.user_map= {}
         self.channel_map= {}
         self.cache_updated= False
+        self.cache_file= 'cache.json'
+        if cache:
+            self.cache_file= cache
         self.load_cache()
 
     def load_cache(self):
-        cache= load_json(self.CACHE_FILE)
+        cache= load_json(self.cache_file)
         if cache:
+            print('load', self.cache_file, flush=True)
             self.user_map= cache.get('user', {})
             self.channel_map= cache.get('channel', {})
 
     def save_cache(self):
         if self.cache_updated:
-            save_json(self.CACHE_FILE, {'user':self.user_map, 'channel':self.channel_map})
+            save_json(self.cache_file, {'user':self.user_map, 'channel':self.channel_map})
             self.cache_updated= False
+            print('save', self.cache_file, flush=True)
 
     def get_all_channels(self):
         # チャンネル一覧を取得
@@ -69,7 +74,7 @@ class SlackMessageChecker:
             cursor= result.get('response_metadata', {}).get('next_cursor', None)
             if cursor is None or cursor == '' or channels == []:
                 break
-        return  channels
+        return  all_channels
 
     def get_channel_info(self, channel_name):
         # キャッシュからチャンネル情報を取得
@@ -162,7 +167,7 @@ class SlackMessageChecker:
 
                     message_num+= 1
                     if appended:
-                        print( '    %d/%d %s replies=%d  user=%d' % (message_num,message_count,message_date,reply_count,reply_users_count) )
+                        print( '    %d/%d %s replies=%d  user=%d' % (message_num,message_count,message_date,reply_count,reply_users_count), flush=True )
 
             print( '* Total %d threads' % len(result), flush=True )
             return result

@@ -38,7 +38,7 @@ class SlackSummary:
         if token is None:
             print("SLACK_API_TOKEN not found in environment variables.")
             return
-        self.slack_checker = SlackMessageChecker.SlackMessageChecker(token=token)
+        self.slack_checker = SlackMessageChecker.SlackMessageChecker(token=token, cache=config.get('cache_file', 'cache.json'))
         self.recent_days= config.get('recent_days', 1)
         self.specified_days= config.get('specified_days', 7)
         self.target_channels= config.get('target_channels', [])
@@ -46,6 +46,7 @@ class SlackSummary:
         self.header_prompt= config.get('header_prompt', '')
         self.output_channel= config.get('output_channel', None)
         self.output_markdown= config.get('output_markdown', 'output.md')
+        self.output_mention= config.get('output_mention', '')
         options= OllamaAPI2.OllamaOptions(model_name=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
         self.ollama_api = OllamaAPI2.OllamaAPI(options)
 
@@ -74,7 +75,7 @@ class SlackSummary:
             date_info= item.get('date', None)
             reply_list= item.get('messages', [])
             thread_info = self.slack_checker.get_message_info(channel_info, date_info, reply_list)
-            print('  %d/%d %s' % (index+1, len(messages), thread_info.reply_date))
+            print('  %d/%d %s' % (index+1, len(messages), thread_info.reply_date), flush=True)
             summary,status_code = self.ollama_api.generate(self.system_prompt + '\n' + thread_info.thread_text)
             if status_code != 200:
                 print(f"Error generating summary: {status_code}")
@@ -132,7 +133,7 @@ class SlackSummary:
                     fo.write('\n')
                     fo.write('### 要約\n')
                     fo.write(thread_info.summary)
-                    fo.write('\n')
+                    fo.write('\n\n')
                 else:
                     fo.write('* リプライなし\n')
                     fo.write('\n')
@@ -150,9 +151,6 @@ class SlackSummary:
 
                 fo.write('\n\n')
             fo.write( '\n' )
-        #with open(output_file, 'r', encoding='utf-8') as fo:
-        #    text= fo.read()
-        #response= self.slack_checker.post_message('apptest', text=None, blocks=None, markdown_text= text)
 
     def get_slack_text(self, thread_info ):
         text= ''
@@ -188,122 +186,72 @@ class SlackSummary:
         return text
 
     def output_slack(self, slack_channel, summary_list):
-        text= ''
+        text= self.output_mention + '\n'
         if len(summary_list) != 0:
             date_info= summary_list[0].date_info
             text+= ('*SlackSummary %s*\n' % date_info[0])
-            text+= ('* 調査日時:  %s\n' % date_info[0])
-            text+= ('* 新規判定:  %s  以降の投稿やリプライがある場合\n' % date_info[2])
-            text+= ('* 検索範囲:  %s ～ %s\n' % (date_info[1][0:10],date_info[0][0:10]))
-            text+= ('* 更新スレッド数:  %d\n' % len(summary_list))
+            text+= ('%s 以降の投稿やリプライがあるもの\n' % date_info[2])
+            text+= ('検索期間:  %s ～ %s\n' % (date_info[1][0:10],date_info[0][0:10]))
+            text+= ('対象スレッド数:  %d\n' % len(summary_list))
         else:
             text+= ('*SlackSummary*\n')
-            text+= ('* 更新スレッドなし\n')
+            text+= ('更新スレッドはありません\n')
         response= self.slack_checker.post_message(slack_channel, text)
 
         for thread_info in summary_list:
+            header_text= ''
             if thread_info.reply_count > 0:
-                header_text=  ('🔴 #%s  最終更新 %s %s\n' % (thread_info.channel_name, thread_info.reply_user_name, thread_info.reply_date))
+                title_text=  ('🔴 更新 %s %s\n' % (thread_info.reply_user_name, thread_info.reply_date))
+                header_text= '*%s %s*\n' % (thread_info.post_user_name, thread_info.post_date)
             else:
-                header_text=  ('🔵 #%s  投稿者 %s %s\n' % (thread_info.channel_name, thread_info.post_user_name, thread_info.post_date))
+                title_text=  ('🔵 新規 %s %s\n' % (thread_info.post_user_name, thread_info.post_date))
+            header_text+= thread_info.header
             blocks= [
                 {
                     'type': 'header',
                     'text': {
                         'type': 'plain_text',
-                        'text': header_text,
+                        'text': title_text,
                         'emoji': True
-                    }
-                },
-                {
-                    'type': 'section',
-                    'text': {
-                        'type': 'mrkdwn',
-                        'text': thread_info.header
-                    }
-                },
-                {
-                    'type': 'section',
-                    'text': {
-                        'type': 'mrkdwn',
-                        'text': thread_info.thread_url
                     }
                 },
                 {
                     'type': 'divider'
                 },
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': '<%s|元スレッドのリンク>  #%s' % (thread_info.thread_url, thread_info.channel_name)
+                    }
+                },
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': header_text
+                    }
+                },
             ]
+ 
             if thread_info.reply_count > 0:
                 blocks.extend([
-                        {
-                            'type': 'section',
-                            'text': {
-                                'type': 'mrkdwn',
-                                'text': thread_info.summary
-                            }
-                        },
-                        {
-                            'type': 'divider'
-                        }
-                    ])
-
-            blocks.append(
                     {
-                        'type': 'section',
-                        'fields': [
-                            {
-                                'type': 'mrkdwn',
-                                'text': '*チャンネル:*  #%s (%s)' % (thread_info.channel_name, thread_info.channel_id)
-                            },
-                            {
-                                'type': 'mrkdwn',
-                                'text': '*投稿者:*  %s' % thread_info.post_user_name
-                            },
-                            {
-                                'type': 'mrkdwn',
-                                'text': '*投稿日:*  %s' % thread_info.post_date
-                            }
-                        ]
-                    }
-                )
-      
-            if thread_info.reply_count > 0:
-                blocks.append({
-                    'type': 'section',
-                    'fields': [
-                        {
-                            'type': 'mrkdwn',
-                            'text': '*リプライ数:*  %d' % thread_info.reply_count
-                        },
-                        {
-                            'type': 'mrkdwn',
-                            'text': '*参加者:*  %s' % thread_info.reply_users_text
-                        },
-                        {
-                            'type': 'mrkdwn',
-                            'text': '*最終リプライ投稿者:*  %s' % thread_info.reply_user_name
-                        },
-                        {
-                            'type': 'mrkdwn',
-                            'text': '*最終リプライ日時:*  %s' % thread_info.reply_date
-                        }
-                    ]
-                })
-            blocks.extend([
+                        'type': 'divider'
+                    },
                     {
                         'type': 'section',
                         'text': {
-                            'type': 'mrkdwn',
-                            'text': '　'
-                        },
-                    },
-                    {
-                        'type': 'divider'
+                                'type': 'mrkdwn',
+                                'text': '*リプライ数:*  %d\n*参加者:*  %s\n' % (thread_info.reply_count, thread_info.reply_users_text)
+                        }
                     }
                 ])
 
-            text= self.get_slack_text(thread_info)
-            response= self.slack_checker.post_message(slack_channel, text=text, blocks=blocks, parent_response=response)
+            response= self.slack_checker.post_message(slack_channel, text='A\n', blocks=blocks, parent_response=response)
+
+            if thread_info.reply_count > 0:
+                response= self.slack_checker.post_message(slack_channel, text=None, blocks=None, markdown_text=thread_info.summary, parent_response=response)
 
 
     def output_all(self, summary_list):

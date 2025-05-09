@@ -6,7 +6,11 @@
         "general", "random"
     ],
     "output_markdown": "output.md",
-    "system_prompt": "以下はslackの一連のスレッドを取り出したものです。最初の投稿を数行でまとめて、そのあとスレッド全体を要約してください。",
+    "output_channel__": "summary",
+    "output_mention": "",
+    "cache_file": "cache.json",
+    "system_prompt": "以下はslackの一連のスレッドを取り出したものです。スレッド全体を要約してください。",
+    "header_prompt": "数行で簡潔にまとめて。",
     "provider": "ollama",
     "ollama_host": "http://localhost:11434",
     "model_name": "gemma3:12b"

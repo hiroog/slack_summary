@@ -1,4 +1,5 @@
 config.json
-cache.json*
+cache*.json*
 output.*
 *.bak
+summary.*
