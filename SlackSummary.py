@@ -25,8 +25,10 @@ import SlackMessageChecker
 #   "provider": "ollama",
 #   "ollama_host": "http://localhost:11434",
 #   "model_name": "gemma3:12b",
+#   "cahce_file": "cache.json",
 #   "output_channel": "summary",
-#   "output_markdown": "output.md"
+#   "output_markdown": "output.md",
+#   "output_mention": ""
 # }
 
 #------------------------------------------------------------------------------
@@ -185,18 +187,35 @@ class SlackSummary:
         text+=  ('\n　\n')
         return text
 
-    def output_slack(self, slack_channel, summary_list):
+    def send_slack_thread(self, slack_channel, summary_list):
+        # Slackにスレッドを送信
         text= self.output_mention + '\n'
         if len(summary_list) != 0:
+            channels= self.slack_checker.get_channels(summary_list)
             date_info= summary_list[0].date_info
-            text+= ('*SlackSummary %s*\n' % date_info[0])
-            text+= ('%s 以降の投稿やリプライがあるもの\n' % date_info[2])
-            text+= ('検索期間:  %s ～ %s\n' % (date_info[1][0:10],date_info[0][0:10]))
-            text+= ('対象スレッド数:  %d\n' % len(summary_list))
+            text= ('*SlackSummary %s*\n' % date_info[0])
+            #text+= ('%s 以降の更新\n' % date_info[2])
+            #text+= ('検索期間:  %s ～ %s\n' % (date_info[1][0:10],date_info[0][0:10]))
+            text+= ('%s\n' % channels)
+            text+= ('スレッド合計:  %d\n' % len(summary_list))
         else:
-            text+= ('*SlackSummary*\n')
+            text= ('*SlackSummary*\n')
             text+= ('更新スレッドはありません\n')
-        response= self.slack_checker.post_message(slack_channel, text)
+        blocks= [
+            {
+                'type': 'section',
+                'expand': True,
+                'text': {
+                    'type': 'mrkdwn',
+                    'text': text
+                }
+            },
+        ]
+        response= self.slack_checker.post_message(slack_channel, text='A\n', blocks=blocks)
+        return response
+
+    def output_slack_v1(self, slack_channel, summary_list):
+        response= self.send_slack_thread(slack_channel, summary_list)
 
         for thread_info in summary_list:
             header_text= ''
@@ -248,12 +267,35 @@ class SlackSummary:
                 response= self.slack_checker.post_message(slack_channel, text=None, blocks=None, markdown_text=thread_info.summary, parent_response=response)
 
 
+    def output_slack_v2(self, slack_channel, summary_list):
+        response= self.send_slack_thread(slack_channel, summary_list)
+
+        for thread_info in summary_list:
+            text= ''
+            if thread_info.reply_count > 0:
+                text+=  ('# 🔴 更新 %s %s\n' % (thread_info.reply_user_name, thread_info.reply_date))
+            else:
+                text+=  ('# 🔵 新規 %s %s\n' % (thread_info.post_user_name, thread_info.post_date))
+            text+= '\n----\n'
+
+            text+= '[元スレッドのリンク(%d)](%s)   #%s\n' % (thread_info.reply_count, thread_info.thread_url, thread_info.channel_name)
+
+            if thread_info.reply_count > 0:
+                text+= '**%s %s**\n' % (thread_info.post_user_name, thread_info.post_date)
+            text+= thread_info.header
+
+            if thread_info.reply_count > 0:
+                text+= '\n----\n'
+                text+= thread_info.summary
+
+            response= self.slack_checker.post_message(slack_channel, text=None, blocks=None, markdown_text=text, parent_response=response)
+
     def output_all(self, summary_list):
         # 全ての出力を行う
         if self.output_markdown is not None:
             self.output_md(self.output_markdown, summary_list)
         if self.output_channel is not None:
-            self.output_slack(self.output_channel, summary_list)
+            self.output_slack_v1(self.output_channel, summary_list)
 
 #------------------------------------------------------------------------------
 

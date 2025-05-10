@@ -265,6 +265,22 @@ class SlackMessageChecker:
         self.save_cache()
         return  info
 
+    def get_channels(self, summary_list):
+        # チャンネル情報を取得
+        channel_map= {}
+        for thread_info in summary_list:
+            channel_name= thread_info.channel_name
+            if channel_name not in channel_map:
+                channel_map[channel_name]= 0
+            channel_map[channel_name]+= 1
+        channel_text= ''
+        for channel_name in channel_map:
+            channel_thread_count= channel_map[channel_name]
+            if channel_text != '':
+                channel_text+= ', '
+            channel_text+= '#%s(%d)' % (channel_name, channel_thread_count)
+        return  channel_text
+
     def post_message(self, channel_name, text, blocks=None, markdown_text= None, parent_response=None):
         # メッセージを送信
         try:
