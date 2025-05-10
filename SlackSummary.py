@@ -56,7 +56,7 @@ class SlackSummary:
         # 設定ファイルを読み込む
         if not os.path.exists(config_file):
             print(f"Config file {config_file} does not exist.")
-            return {}
+            return None
         with open(config_file, 'r', encoding='utf-8') as f:
             config = json.load(f)
         return config
@@ -211,7 +211,7 @@ class SlackSummary:
                 }
             },
         ]
-        response= self.slack_checker.post_message(slack_channel, text='A\n', blocks=blocks)
+        response= self.slack_checker.post_message(slack_channel, text=text, blocks=blocks)
         return response
 
     def output_slack_v1(self, slack_channel, summary_list):
@@ -261,7 +261,7 @@ class SlackSummary:
                     }
                 ])
 
-            response= self.slack_checker.post_message(slack_channel, text='A\n', blocks=blocks, parent_response=response)
+            response= self.slack_checker.post_message(slack_channel, text=title_text+header_text, blocks=blocks, parent_response=response)
 
             if thread_info.reply_count > 0:
                 response= self.slack_checker.post_message(slack_channel, text=None, blocks=None, markdown_text=thread_info.summary, parent_response=response)
@@ -326,7 +326,7 @@ def main(argv):
 
     summary = SlackSummary(config_file)
     if load_messages:
-        object_list= SlackMessageChecker.load_json('summary.json')
+        object_list= SlackMessageChecker.SlackAPI.load_json('summary.json')
         summary_list= []
         for object in object_list:
             thread_info= SlackMessageChecker.ThreadInfo()
@@ -341,7 +341,7 @@ def main(argv):
             object_list= []
             for thread_info in summary_list:
                 object_list.append(thread_info.__dict__)
-            SlackMessageChecker.save_json('summary.json',object_list)
+            SlackMessageChecker.SlackAPI.save_json('summary.json',object_list)
 
     summary.output_all(summary_list)
     return 0
