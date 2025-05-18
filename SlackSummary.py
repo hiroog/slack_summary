@@ -66,7 +66,7 @@ class SlackSummary:
         messages = self.slack_checker.get_recent_messages(self.recent_days, self.specified_days, self.target_channels)
         if messages is None or len(messages) == 0:
             print("No messages found.")
-            return None
+            return []
         return messages
 
     def summarize_messages(self, messages):
@@ -335,7 +335,7 @@ def main(argv):
     else:
         messages = summary.get_recent_messages()
         if messages is None:
-            return 1
+            return 0
         summary_list= summary.summarize_messages(messages)
         if save_messages:
             object_list= []
