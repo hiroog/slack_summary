@@ -55,7 +55,7 @@ class SlackAPI:
         all_channels= []
         cursor= None
         while True:
-            result= self.client.conversations_list( cursor=cursor, limit=800, types="public_channel" )
+            result= self.client.conversations_list( cursor=cursor, limit=800, types="public_channel,private_channel" )
             time.sleep( 1.0 )
             channels= result.get( "channels", [] )
             all_channels.extend( channels )
