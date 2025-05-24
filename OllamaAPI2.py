@@ -184,7 +184,11 @@ class OllamaAPI:
 
     #--------------------------------------------------------------------------
 
-    def remove_think_tag( self, response ):
+    def remove_think_tag2( self, response ):
+        response= re.sub( r'\n*\<think\>.*?\<\/think\>\n*', '', response, flags=re.DOTALL )
+        return  response
+
+    def remove_think_tag1( self, response ):
         begin_pat= re.compile( r'^(.*)\<think\>' )
         end_pat= re.compile( r'\<\/think\>(.*)$' )
         bmode= 0
@@ -216,11 +220,13 @@ class OllamaAPI:
             return  response
         return  '\n'.join( result_list )
 
+    def remove_think_tag( self, response ):
+        return  self.remove_think_tag2( response )
 
 #------------------------------------------------------------------------------
 
 def usage():
-    print( 'OllamaAPI v1.20' )
+    print( 'OllamaAPI v1.21' )
     print( 'usage: OllamaAPI [<options>] [<message..>]' )
     print( 'options:' )
     print( '  --host <base_url>' )
