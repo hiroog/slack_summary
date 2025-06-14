@@ -201,6 +201,7 @@ class SlackSummary:
         else:
             text= ('*SlackSummary*\n')
             text+= ('更新スレッドはありません\n')
+            return  None
         blocks= [
             {
                 'type': 'section',
@@ -216,6 +217,8 @@ class SlackSummary:
 
     def output_slack_v1(self, slack_channel, summary_list):
         response= self.send_slack_thread(slack_channel, summary_list)
+        if response is None:
+            return
 
         for thread_info in summary_list:
             header_text= ''
@@ -269,6 +272,8 @@ class SlackSummary:
 
     def output_slack_v2(self, slack_channel, summary_list):
         response= self.send_slack_thread(slack_channel, summary_list)
+        if response is None:
+            return
 
         for thread_info in summary_list:
             text= ''
