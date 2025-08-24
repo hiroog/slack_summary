@@ -5,10 +5,10 @@ import os
 import sys
 import json
 
-script_dir= os.path.dirname(__file__)
-if script_dir not in sys.path:
-    sys.path.append( script_dir )
-import OllamaAPI2
+lib_path= os.path.dirname(__file__)
+if lib_path not in sys.path:
+    sys.path.append( lib_path )
+import OllamaAPI4
 import SlackMessageChecker
 
 #------------------------------------------------------------------------------
@@ -49,8 +49,8 @@ class SlackSummary:
         self.output_channel= config.get('output_channel', None)
         self.output_markdown= config.get('output_markdown', None)
         self.output_mention= config.get('output_mention', '')
-        options= OllamaAPI2.OllamaOptions(model_name=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
-        self.ollama_api = OllamaAPI2.OllamaAPI(options)
+        options= OllamaAPI4.OllamaOptions(model=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
+        self.ollama_api = OllamaAPI4.OllamaAPI(options)
 
     def load_config(self, config_file):
         # 設定ファイルを読み込む
@@ -342,6 +342,8 @@ def main(argv):
         if messages is None:
             return 0
         summary_list= summary.summarize_messages(messages)
+        if summary_list is None:
+            return 1
         if save_messages:
             object_list= []
             for thread_info in summary_list:
