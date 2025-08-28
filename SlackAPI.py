@@ -93,7 +93,7 @@ class SlackAPI:
                 real_name= user_name
             if display_name == '':
                 display_name= user_name
-            user_info= { 'user':user_name, 'display':display_name, 'real':real_name }
+            user_info= { 'user':user_name, 'display':display_name, 'real':real_name, 'id':user_id }
             self.user_map[user_id]= user_info
             self.cache_updated= True
             return  user_info

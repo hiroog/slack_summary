@@ -20,6 +20,7 @@ import SlackMessageChecker
 #   "recent_days": 1,
 #   "specified_days": 30,
 #   "target_channels": [ "general", "random" ],
+#   "bot_users": [ "～", ],
 #   "system_prompt": "要約して",
 #   "Header_prompt": "数行にまとめて",
 #   "provider": "ollama",
@@ -44,12 +45,13 @@ class SlackSummary:
         self.recent_days= config.get('recent_days', 1)
         self.specified_days= config.get('specified_days', 7)
         self.target_channels= config.get('target_channels', [])
+        self.bot_users= config.get('bot_users', [])
         self.system_prompt= config.get('system_prompt', '')
         self.header_prompt= config.get('header_prompt', '')
         self.output_channel= config.get('output_channel', None)
         self.output_markdown= config.get('output_markdown', None)
         self.output_mention= config.get('output_mention', '')
-        options= OllamaAPI4.OllamaOptions(model=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'))
+        options= OllamaAPI4.OllamaOptions(model=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'), num_ctx=16384)
         self.ollama_api = OllamaAPI4.OllamaAPI(options)
 
     def load_config(self, config_file):
@@ -77,6 +79,13 @@ class SlackSummary:
             date_info= item.get('date', None)
             reply_list= item.get('messages', [])
             thread_info = self.slack_checker.get_message_info(channel_info, date_info, reply_list)
+            # bot user を無視
+            post_user_info= thread_info.post_user_info
+            post_user_id= post_user_info.get('id','<None>')
+            post_user_name= post_user_info.get('real',post_user_info.get('user','<None>'))
+            if post_user_name in self.bot_users:
+                print( 'skip: bot user', post_user_name )
+                continue
             print('  %d/%d %s' % (index+1, len(messages), thread_info.reply_date), flush=True)
             summary,status_code = self.ollama_api.generate(self.system_prompt + '\n' + thread_info.thread_text)
             if status_code != 200:
