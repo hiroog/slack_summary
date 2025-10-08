@@ -4,6 +4,10 @@ import os
 import sys
 import datetime
 import time
+
+lib_path= os.path.dirname(__file__)
+if lib_path not in sys.path:
+    sys.path.append( lib_path )
 import SlackAPI
 
 #-------------------------------------------------------------------------------

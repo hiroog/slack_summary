@@ -10,6 +10,7 @@ if lib_path not in sys.path:
     sys.path.append( lib_path )
 import OllamaAPI4
 import SlackMessageChecker
+import SlackAPI
 
 #------------------------------------------------------------------------------
 
@@ -17,6 +18,7 @@ import SlackMessageChecker
 #
 # {
 #   "token": "SLACK-API-TOKEN",
+#   "post_token": "SLACK-API-TOKEN",
 #   "recent_days": 1,
 #   "specified_days": 30,
 #   "target_channels": [ "general", "random" ],
@@ -27,6 +29,7 @@ import SlackMessageChecker
 #   "ollama_host": "http://localhost:11434",
 #   "model_name": "gemma3:12b",
 #   "cahce_file": "cache.json",
+#   "post_cahce_file": "cache.json",
 #   "output_channel": "summary",
 #   "output_markdown": "output.md",
 #   "output_mention": ""
@@ -37,6 +40,7 @@ import SlackMessageChecker
 class SlackSummary:
     def __init__(self, config_file):
         config= self.load_config(config_file)
+        self.config= config
         token= config.get('token', os.environ.get('SLACK_API_TOKEN'))
         if token is None:
             print("SLACK_API_TOKEN not found in environment variables.")
@@ -53,6 +57,7 @@ class SlackSummary:
         self.output_mention= config.get('output_mention', '')
         options= OllamaAPI4.OllamaOptions(model=config['model_name'], base_url=config['ollama_host'], provider=config.get('provider', 'ollama'), num_ctx=16384)
         self.ollama_api = OllamaAPI4.OllamaAPI(options)
+        self.slack_api= None
 
     def load_config(self, config_file):
         # 設定ファイルを読み込む
@@ -221,7 +226,7 @@ class SlackSummary:
                 }
             },
         ]
-        response= self.slack_checker.post_message(slack_channel, text=text, blocks=blocks)
+        response= self.slack_api.post_message(slack_channel, text=text, blocks=blocks)
         return response
 
     def output_slack_v1(self, slack_channel, summary_list):
@@ -273,10 +278,10 @@ class SlackSummary:
                     }
                 ])
 
-            response= self.slack_checker.post_message(slack_channel, text=title_text+header_text, blocks=blocks, parent_response=response)
+            response= self.slack_api.post_message(slack_channel, text=title_text+header_text, blocks=blocks, parent_response=response)
 
             if thread_info.reply_count > 0:
-                response= self.slack_checker.post_message(slack_channel, text=None, blocks=None, markdown_text=thread_info.summary, parent_response=response)
+                response= self.slack_api.post_message(slack_channel, text=None, blocks=None, markdown_text=thread_info.summary, parent_response=response)
 
 
     def output_slack_v2(self, slack_channel, summary_list):
@@ -302,19 +307,29 @@ class SlackSummary:
                 text+= '\n----\n'
                 text+= thread_info.summary
 
-            response= self.slack_checker.post_message(slack_channel, text=None, blocks=None, markdown_text=text, parent_response=response)
+            response= self.slack_api.post_message(slack_channel, text=None, blocks=None, markdown_text=text, parent_response=response)
+
+    def init_slack_api( self ):
+        token= self.config.get( 'post_token', self.config.get('token', os.environ.get('SLACK_API_TOKEN')) )
+        cache= self.config.get( 'post_cache_file', self.config.get('cache_file', 'cache.json') )
+        self.slack_api= SlackAPI.SlackAPI( token, cache )
 
     def output_all(self, summary_list):
         # 全ての出力を行う
         if self.output_markdown is not None:
             self.output_md(self.output_markdown, summary_list)
         if self.output_channel is not None:
-            self.output_slack_v1(self.output_channel, summary_list)
+            self.init_slack_api()
+            try:
+                self.output_slack_v1(self.output_channel, summary_list)
+            finally:
+                self.slack_api.save_cache()
 
 #------------------------------------------------------------------------------
 
 def usage():
-    print("Usage: python SlackSummary.py --config <config_file>")
+    print( 'SlackSummary v1.20' )
+    print( 'Usage: python SlackSummary.py --config <config_file>' )
     sys.exit( 1 )
 
 
@@ -338,7 +353,7 @@ def main(argv):
             usage()
         ai+= 1
 
-    summary = SlackSummary(config_file)
+    summary= SlackSummary(config_file)
     if load_messages:
         object_list= SlackMessageChecker.SlackAPI.load_json('summary.json')
         summary_list= []
